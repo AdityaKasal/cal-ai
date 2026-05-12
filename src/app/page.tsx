@@ -281,6 +281,11 @@ export default function Home() {
     setLog(prev => prev.filter(e => e.id !== id))
   }, [])
 
+  const getToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ?? ''
+  }
+
   const analyze = useCallback(async (file: File) => {
     setError(null)
     setAnalyzing(true)
@@ -291,11 +296,12 @@ export default function Home() {
       setPreview(dataUrl)
       const base64 = dataUrl.split(',')[1]
       const mediaType = file.type as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
+      const token = await getToken()
 
       try {
         const res = await fetch('/api/analyze', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ image: base64, mediaType }),
         })
         if (!res.ok) {

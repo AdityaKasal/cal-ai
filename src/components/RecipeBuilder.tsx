@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { X, Plus, Trash2, Zap, ChefHat } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 interface Ingredient {
   id: string
@@ -40,9 +41,11 @@ export function RecipeBuilder({ onClose, onAnalyzed }: Props) {
     setLoading(true)
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token ?? ''
       const res = await fetch('/api/analyze-recipe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ name: recipeName, ingredients: filled }),
       })
 
