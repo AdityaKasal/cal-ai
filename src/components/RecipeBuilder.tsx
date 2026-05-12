@@ -4,10 +4,28 @@ import { useState } from 'react'
 import { X, Plus, Trash2, Zap, ChefHat } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
+const UNITS = [
+  { label: 'g', value: 'g' },
+  { label: 'kg', value: 'kg' },
+  { label: 'mg', value: 'mg' },
+  { label: 'ml', value: 'ml' },
+  { label: 'L', value: 'L' },
+  { label: 'cup', value: 'cup' },
+  { label: 'tbsp', value: 'tbsp' },
+  { label: 'tsp', value: 'tsp' },
+  { label: 'oz', value: 'oz' },
+  { label: 'lb', value: 'lb' },
+  { label: 'scoop', value: 'scoop' },
+  { label: 'slice', value: 'slice' },
+  { label: 'piece', value: 'piece' },
+  { label: 'serving', value: 'serving' },
+]
+
 interface Ingredient {
   id: string
   name: string
-  amount: string
+  quantity: string
+  unit: string
 }
 
 interface Props {
@@ -17,24 +35,29 @@ interface Props {
 
 export function RecipeBuilder({ onClose, onAnalyzed }: Props) {
   const [recipeName, setRecipeName] = useState('')
-  const [ingredients, setIngredients] = useState<Ingredient[]>([{ id: crypto.randomUUID(), name: '', amount: '' }])
+  const [ingredients, setIngredients] = useState<Ingredient[]>([
+    { id: crypto.randomUUID(), name: '', quantity: '', unit: 'g' },
+  ])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const addIngredient = () => {
-    setIngredients(prev => [...prev, { id: crypto.randomUUID(), name: '', amount: '' }])
+    setIngredients(prev => [...prev, { id: crypto.randomUUID(), name: '', quantity: '', unit: 'g' }])
   }
 
   const removeIngredient = (id: string) => {
     setIngredients(prev => prev.filter(i => i.id !== id))
   }
 
-  const updateIngredient = (id: string, field: 'name' | 'amount', value: string) => {
+  const update = (id: string, field: keyof Ingredient, value: string) => {
     setIngredients(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
   }
 
   const analyze = async () => {
-    const filled = ingredients.filter(i => i.name.trim())
+    const filled = ingredients
+      .filter(i => i.name.trim())
+      .map(i => ({ name: i.name, amount: `${i.quantity || '1'} ${i.unit}` }))
+
     if (!filled.length) { setError('Add at least one ingredient'); return }
 
     setError(null)
@@ -71,7 +94,6 @@ export function RecipeBuilder({ onClose, onAnalyzed }: Props) {
         className="relative w-full max-w-lg bg-slate-900 border border-white/10 rounded-t-3xl p-6 space-y-5 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        {/* Handle */}
         <div className="w-10 h-1 bg-white/20 rounded-full mx-auto -mt-1" />
 
         <div className="flex items-center justify-between">
@@ -96,28 +118,48 @@ export function RecipeBuilder({ onClose, onAnalyzed }: Props) {
         </div>
 
         <div className="space-y-3">
-          <label className="text-slate-400 text-sm block">Ingredients</label>
+          <div className="grid grid-cols-[2fr_3fr_auto] gap-2">
+            <span className="text-slate-500 text-xs px-1">Amount + Unit</span>
+            <span className="text-slate-500 text-xs px-1">Ingredient</span>
+            <span />
+          </div>
+
           {ingredients.map((ing, i) => (
-            <div key={ing.id} className="flex gap-2">
-              <input
-                type="text"
-                value={ing.amount}
-                onChange={e => updateIngredient(ing.id, 'amount', e.target.value)}
-                placeholder="Amount"
-                className="w-24 shrink-0 bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 text-sm"
-              />
+            <div key={ing.id} className="grid grid-cols-[2fr_3fr_auto] gap-2 items-center">
+              {/* Amount + Unit combined */}
+              <div className="flex gap-1">
+                <input
+                  type="number"
+                  min="0"
+                  value={ing.quantity}
+                  onChange={e => update(ing.id, 'quantity', e.target.value)}
+                  placeholder="0"
+                  className="w-0 flex-1 bg-white/5 border border-white/10 rounded-xl px-2 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 text-sm text-center"
+                />
+                <select
+                  value={ing.unit}
+                  onChange={e => update(ing.id, 'unit', e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded-xl px-1 py-3 text-white focus:outline-none focus:border-emerald-500/50 text-sm cursor-pointer"
+                >
+                  {UNITS.map(u => (
+                    <option key={u.value} value={u.value} className="bg-slate-900">{u.label}</option>
+                  ))}
+                </select>
+              </div>
+
               <input
                 type="text"
                 value={ing.name}
-                onChange={e => updateIngredient(ing.id, 'name', e.target.value)}
-                placeholder={i === 0 ? 'e.g. whey protein, chicken breast...' : 'Ingredient'}
-                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 text-sm"
+                onChange={e => update(ing.id, 'name', e.target.value)}
+                placeholder={i === 0 ? 'e.g. whey protein...' : 'Ingredient'}
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 text-sm"
               />
-              {ingredients.length > 1 && (
-                <button onClick={() => removeIngredient(ing.id)} className="text-slate-500 hover:text-red-400 transition-colors shrink-0">
-                  <Trash2 size={16} />
+
+              {ingredients.length > 1 ? (
+                <button onClick={() => removeIngredient(ing.id)} className="text-slate-500 hover:text-red-400 transition-colors p-1">
+                  <Trash2 size={15} />
                 </button>
-              )}
+              ) : <span />}
             </div>
           ))}
 
