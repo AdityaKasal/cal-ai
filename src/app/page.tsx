@@ -1,7 +1,11 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Camera, Upload, Trash2, ChevronDown, ChevronUp, Zap, Leaf, History } from 'lucide-react'
+import { Camera, Upload, Trash2, ChevronDown, ChevronUp, Zap, Leaf, History, LogOut, ChefHat } from 'lucide-react'
+import { supabase, type DBLogEntry } from '@/lib/supabase'
+import { AuthScreen } from '@/components/AuthScreen'
+import { RecipeBuilder } from '@/components/RecipeBuilder'
+import type { User } from '@supabase/supabase-js'
 
 interface NutritionData {
   foodName: string
@@ -16,36 +20,20 @@ interface NutritionData {
   notes: string
 }
 
-interface LogEntry {
-  id: string
-  imageUrl: string
-  nutrition: NutritionData
-  timestamp: string // ISO string for JSON serialization
-  dateKey: string   // YYYY-MM-DD
-}
+const GOALS = { calories: 2650, protein: 150, carbs: 300, fat: 80 }
+const RECIPE_PLACEHOLDER = 'recipe'
 
-const STORAGE_KEY = 'cal-ai-log'
-
-const CONFIDENCE_COLORS = {
-  high: 'text-emerald-400',
-  medium: 'text-yellow-400',
-  low: 'text-red-400',
-}
-const CONFIDENCE_LABELS = {
-  high: 'High confidence',
-  medium: 'Medium confidence',
-  low: 'Low confidence',
-}
+const CONFIDENCE_COLORS = { high: 'text-emerald-400', medium: 'text-yellow-400', low: 'text-red-400' }
+const CONFIDENCE_LABELS = { high: 'High confidence', medium: 'Medium confidence', low: 'Low confidence' }
 
 function todayKey() {
-  return new Date().toLocaleDateString('en-CA') // YYYY-MM-DD
+  return new Date().toLocaleDateString('en-CA')
 }
 
 function formatDateLabel(dateKey: string) {
   const d = new Date(dateKey + 'T00:00:00')
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
   if (dateKey === todayKey()) return 'Today'
   if (dateKey === yesterday.toLocaleDateString('en-CA')) return 'Yesterday'
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
@@ -66,25 +54,6 @@ async function compressThumbnail(dataUrl: string, maxPx = 300): Promise<string> 
   })
 }
 
-function loadLog(): LogEntry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
-}
-
-function saveLog(log: LogEntry[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(log))
-  } catch {
-    // localStorage full — trim oldest entries
-    const trimmed = log.slice(0, Math.floor(log.length / 2))
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed))
-  }
-}
-
 function MacroBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
   const pct = Math.min(100, Math.round((value / max) * 100))
   return (
@@ -100,25 +69,36 @@ function MacroBar({ label, value, max, color }: { label: string; value: number; 
   )
 }
 
-function NutritionCard({ nutrition, imageUrl, time, onDelete, defaultOpen = true }: {
-  nutrition: NutritionData
-  imageUrl: string
-  time?: string
-  onDelete?: () => void
+function EntryImage({ imageUrl }: { imageUrl: string | null }) {
+  if (!imageUrl || imageUrl === RECIPE_PLACEHOLDER) {
+    return (
+      <div className="w-14 h-14 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center shrink-0">
+        <ChefHat size={22} className="text-emerald-400" />
+      </div>
+    )
+  }
+  return <img src={imageUrl} alt="food" className="w-14 h-14 rounded-xl object-cover shrink-0" />
+}
+
+function NutritionCard({ entry, defaultOpen = true, onDelete }: {
+  entry: DBLogEntry
   defaultOpen?: boolean
+  onDelete?: () => void
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const confidence = (entry.confidence || 'medium') as 'high' | 'medium' | 'low'
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur">
       <div className="flex items-center gap-3 p-4 cursor-pointer" onClick={() => setOpen(o => !o)}>
-        <img src={imageUrl} alt={nutrition.foodName} className="w-14 h-14 rounded-xl object-cover shrink-0" />
+        <EntryImage imageUrl={entry.image_url} />
         <div className="flex-1 min-w-0">
-          <p className="text-white font-semibold truncate">{nutrition.foodName}</p>
-          <p className="text-slate-400 text-sm">{nutrition.servingSize}{time ? ` · ${time}` : ''}</p>
+          <p className="text-white font-semibold truncate">{entry.food_name}</p>
+          <p className="text-slate-400 text-sm">{entry.serving_size} · {time}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-emerald-400 font-bold text-lg">{nutrition.calories}</p>
+          <p className="text-emerald-400 font-bold text-lg">{entry.calories}</p>
           <p className="text-slate-500 text-xs">kcal</p>
         </div>
         <div className="ml-1 text-slate-500">
@@ -130,9 +110,9 @@ function NutritionCard({ nutrition, imageUrl, time, onDelete, defaultOpen = true
         <div className="px-4 pb-4 space-y-4 border-t border-white/5 pt-4">
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Protein', value: nutrition.protein, color: 'text-blue-400' },
-              { label: 'Carbs', value: nutrition.carbs, color: 'text-orange-400' },
-              { label: 'Fat', value: nutrition.fat, color: 'text-pink-400' },
+              { label: 'Protein', value: entry.protein, color: 'text-blue-400' },
+              { label: 'Carbs', value: entry.carbs, color: 'text-orange-400' },
+              { label: 'Fat', value: entry.fat, color: 'text-pink-400' },
             ].map(m => (
               <div key={m.label} className="bg-white/5 rounded-xl p-3 text-center">
                 <p className={`font-bold text-lg ${m.color}`}>{m.value}<span className="text-xs font-normal text-slate-400">g</span></p>
@@ -141,17 +121,23 @@ function NutritionCard({ nutrition, imageUrl, time, onDelete, defaultOpen = true
             ))}
           </div>
           <div className="space-y-3">
-            <MacroBar label="Protein" value={nutrition.protein} max={60} color="bg-blue-500" />
-            <MacroBar label="Carbs" value={nutrition.carbs} max={120} color="bg-orange-500" />
-            <MacroBar label="Fat" value={nutrition.fat} max={65} color="bg-pink-500" />
-            <MacroBar label="Fiber" value={nutrition.fiber} max={30} color="bg-teal-500" />
-            <MacroBar label="Sugar" value={nutrition.sugar} max={50} color="bg-yellow-500" />
+            <MacroBar label="Protein" value={entry.protein} max={60} color="bg-blue-500" />
+            <MacroBar label="Carbs" value={entry.carbs} max={120} color="bg-orange-500" />
+            <MacroBar label="Fat" value={entry.fat} max={65} color="bg-pink-500" />
+            <MacroBar label="Fiber" value={entry.fiber} max={30} color="bg-teal-500" />
+            <MacroBar label="Sugar" value={entry.sugar} max={50} color="bg-yellow-500" />
           </div>
+          {entry.is_recipe && entry.ingredients && (
+            <div className="bg-white/5 rounded-xl p-3">
+              <p className="text-slate-400 text-xs font-medium mb-1">Ingredients</p>
+              <p className="text-slate-300 text-sm whitespace-pre-wrap">{entry.ingredients}</p>
+            </div>
+          )}
           <div className="flex items-start gap-2 bg-white/5 rounded-xl p-3">
-            <span className={`text-xs font-medium shrink-0 ${CONFIDENCE_COLORS[nutrition.confidence]}`}>
-              {CONFIDENCE_LABELS[nutrition.confidence]}
+            <span className={`text-xs font-medium shrink-0 ${CONFIDENCE_COLORS[confidence]}`}>
+              {CONFIDENCE_LABELS[confidence]}
             </span>
-            <span className="text-slate-400 text-xs">&mdash; {nutrition.notes}</span>
+            <span className="text-slate-400 text-xs">&mdash; {entry.notes}</span>
           </div>
           {onDelete && (
             <button onClick={onDelete} className="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm transition-colors">
@@ -164,17 +150,11 @@ function NutritionCard({ nutrition, imageUrl, time, onDelete, defaultOpen = true
   )
 }
 
-function DailyTotals({ entries, label }: { entries: LogEntry[]; label: string }) {
+function DailyTotals({ entries, label }: { entries: DBLogEntry[]; label: string }) {
   const totals = entries.reduce(
-    (acc, e) => ({
-      calories: acc.calories + e.nutrition.calories,
-      protein: acc.protein + e.nutrition.protein,
-      carbs: acc.carbs + e.nutrition.carbs,
-      fat: acc.fat + e.nutrition.fat,
-    }),
+    (acc, e) => ({ calories: acc.calories + e.calories, protein: acc.protein + e.protein, carbs: acc.carbs + e.carbs, fat: acc.fat + e.fat }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   )
-  const GOALS = { calories: 2650, protein: 150, carbs: 300, fat: 80 }
   const calPct = Math.min(100, Math.round((totals.calories / GOALS.calories) * 100))
 
   return (
@@ -188,10 +168,7 @@ function DailyTotals({ entries, label }: { entries: LogEntry[]; label: string })
         <span className="text-slate-400 mb-2">/ {GOALS.calories} kcal</span>
       </div>
       <div className="h-3 bg-white/10 rounded-full overflow-hidden mb-4">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${calPct >= 100 ? 'bg-red-500' : 'bg-emerald-500'}`}
-          style={{ width: `${calPct}%` }}
-        />
+        <div className={`h-full rounded-full transition-all duration-700 ${calPct >= 100 ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${calPct}%` }} />
       </div>
       <div className="grid grid-cols-3 gap-3">
         {[
@@ -209,33 +186,23 @@ function DailyTotals({ entries, label }: { entries: LogEntry[]; label: string })
   )
 }
 
-function HistoryDay({ dateKey, entries, onDelete }: { dateKey: string; entries: LogEntry[]; onDelete: (id: string) => void }) {
+function HistoryDay({ dateKey, entries, onDelete }: { dateKey: string; entries: DBLogEntry[]; onDelete: (id: string) => void }) {
   const [open, setOpen] = useState(false)
-  const totals = entries.reduce((acc, e) => acc + e.nutrition.calories, 0)
+  const totalCal = entries.reduce((acc, e) => acc + e.calories, 0)
 
   return (
     <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
-      <button
-        className="w-full flex items-center justify-between p-4"
-        onClick={() => setOpen(o => !o)}
-      >
+      <button className="w-full flex items-center justify-between p-4" onClick={() => setOpen(o => !o)}>
         <div className="text-left">
           <p className="text-white font-medium">{formatDateLabel(dateKey)}</p>
-          <p className="text-slate-400 text-sm">{entries.length} items · {totals} kcal</p>
+          <p className="text-slate-400 text-sm">{entries.length} items · {totalCal} kcal</p>
         </div>
         {open ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
       </button>
       {open && (
         <div className="px-4 pb-4 space-y-3 border-t border-white/5 pt-3">
           {entries.map(entry => (
-            <NutritionCard
-              key={entry.id}
-              nutrition={entry.nutrition}
-              imageUrl={entry.imageUrl}
-              time={new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              defaultOpen={false}
-              onDelete={() => onDelete(entry.id)}
-            />
+            <NutritionCard key={entry.id} entry={entry} defaultOpen={false} onDelete={() => onDelete(entry.id)} />
           ))}
         </div>
       )}
@@ -244,51 +211,84 @@ function HistoryDay({ dateKey, entries, onDelete }: { dateKey: string; entries: 
 }
 
 export default function Home() {
-  const [log, setLog] = useState<LogEntry[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [log, setLog] = useState<DBLogEntry[]>([])
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showRecipe, setShowRecipe] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Load from localStorage on mount
   useEffect(() => {
-    setLog(loadLog())
-    setLoaded(true)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => subscription.unsubscribe()
   }, [])
 
-  // Persist to localStorage whenever log changes
+  const loadLog = useCallback(async (userId: string) => {
+    const { data } = await supabase
+      .from('food_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('timestamp', { ascending: false })
+    setLog(data || [])
+  }, [])
+
   useEffect(() => {
-    if (loaded) saveLog(log)
-  }, [log, loaded])
+    if (user) loadLog(user.id)
+    else setLog([])
+  }, [user, loadLog])
 
-  const today = todayKey()
-  const todayEntries = log.filter(e => e.dateKey === today)
-  const pastEntries = log.filter(e => e.dateKey !== today)
+  const saveEntry = async (nutrition: NutritionData, imageUrl: string, isRecipe = false, ingredients?: string) => {
+    if (!user) return
+    const now = new Date()
+    const { data, error } = await supabase
+      .from('food_logs')
+      .insert({
+        user_id: user.id,
+        food_name: nutrition.foodName,
+        serving_size: nutrition.servingSize,
+        calories: nutrition.calories,
+        protein: nutrition.protein,
+        carbs: nutrition.carbs,
+        fat: nutrition.fat,
+        fiber: nutrition.fiber,
+        sugar: nutrition.sugar,
+        confidence: nutrition.confidence,
+        notes: nutrition.notes,
+        image_url: imageUrl,
+        is_recipe: isRecipe,
+        ingredients: ingredients ?? null,
+        timestamp: now.toISOString(),
+        date_key: now.toLocaleDateString('en-CA'),
+      })
+      .select()
+      .single()
 
-  // Group past entries by date
-  const pastByDate = pastEntries.reduce<Record<string, LogEntry[]>>((acc, e) => {
-    acc[e.dateKey] = acc[e.dateKey] ? [e, ...acc[e.dateKey]] : [e]
-    return acc
-  }, {})
-  const pastDates = Object.keys(pastByDate).sort((a, b) => b.localeCompare(a))
+    if (!error && data) setLog(prev => [data, ...prev])
+  }
 
-  const deleteEntry = useCallback((id: string) => {
+  const deleteEntry = useCallback(async (id: string) => {
+    await supabase.from('food_logs').delete().eq('id', id)
     setLog(prev => prev.filter(e => e.id !== id))
   }, [])
 
   const analyze = useCallback(async (file: File) => {
     setError(null)
     setAnalyzing(true)
-
     const reader = new FileReader()
     reader.readAsDataURL(file)
     reader.onload = async () => {
       const dataUrl = reader.result as string
       setPreview(dataUrl)
-
       const base64 = dataUrl.split(',')[1]
       const mediaType = file.type as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
 
@@ -298,35 +298,27 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64, mediaType }),
         })
-
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           throw new Error(data.error || `Error ${res.status}`)
         }
-
         const nutrition: NutritionData = await res.json()
         const thumbnail = await compressThumbnail(dataUrl)
-        const now = new Date()
-
-        setLog(prev => [
-          {
-            id: crypto.randomUUID(),
-            imageUrl: thumbnail,
-            nutrition,
-            timestamp: now.toISOString(),
-            dateKey: now.toLocaleDateString('en-CA'),
-          },
-          ...prev,
-        ])
+        await saveEntry(nutrition, thumbnail)
         setPreview(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Analysis failed')
         setPreview(null)
       }
-
       setAnalyzing(false)
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
+
+  const onRecipeAnalyzed = useCallback(async (nutrition: unknown) => {
+    await saveEntry(nutrition as NutritionData, RECIPE_PLACEHOLDER, true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -341,35 +333,62 @@ export default function Home() {
     if (file?.type.startsWith('image/')) analyze(file)
   }, [analyze])
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+      </div>
+    )
+  }
+
+  if (!user) return <AuthScreen />
+
+  const today = todayKey()
+  const todayEntries = log.filter(e => e.date_key === today)
+  const pastEntries = log.filter(e => e.date_key !== today)
+  const pastByDate = pastEntries.reduce<Record<string, DBLogEntry[]>>((acc, e) => {
+    acc[e.date_key] = acc[e.date_key] ? [e, ...acc[e.date_key]] : [e]
+    return acc
+  }, {})
+  const pastDates = Object.keys(pastByDate).sort((a, b) => b.localeCompare(a))
+  const userName = user.user_metadata?.name || user.email?.split('@')[0] || 'there'
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          backgroundImage: `radial-gradient(circle at 30% 20%, rgba(16,185,129,0.06) 0%, transparent 50%),
-                           radial-gradient(circle at 70% 80%, rgba(20,184,166,0.04) 0%, transparent 50%)`,
-        }}
-      />
+      <div className="fixed inset-0 pointer-events-none" style={{
+        backgroundImage: `radial-gradient(circle at 30% 20%, rgba(16,185,129,0.06) 0%, transparent 50%),
+                         radial-gradient(circle at 70% 80%, rgba(20,184,166,0.04) 0%, transparent 50%)`,
+      }} />
+
+      {showRecipe && <RecipeBuilder onClose={() => setShowRecipe(false)} onAnalyzed={onRecipeAnalyzed} />}
 
       <div className="relative z-10 max-w-lg mx-auto px-4 py-8 space-y-6 pb-safe">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
             <Leaf size={20} className="text-emerald-400" />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold text-white">Cal AI</h1>
-            <p className="text-slate-400 text-xs">AI-powered calorie tracker</p>
+            <p className="text-slate-400 text-xs truncate">Hey {userName} 👋</p>
           </div>
-          {pastDates.length > 0 && (
+          <div className="flex items-center gap-2">
+            {pastDates.length > 0 && (
+              <button
+                onClick={() => setShowHistory(o => !o)}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl transition-colors
+                  ${showHistory ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+              >
+                <History size={14} />
+              </button>
+            )}
             <button
-              onClick={() => setShowHistory(o => !o)}
-              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl transition-colors
-                ${showHistory ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+              onClick={() => supabase.auth.signOut()}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-white transition-colors"
             >
-              <History size={14} /> History
+              <LogOut size={14} />
             </button>
-          )}
+          </div>
         </div>
 
         {/* Upload area */}
@@ -396,19 +415,19 @@ export default function Home() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-4 py-12 px-6 text-center">
+            <div className="flex flex-col items-center justify-center gap-4 py-10 px-6 text-center">
               <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center">
                 <Camera size={28} className="text-emerald-400" />
               </div>
               <div>
                 <p className="text-white font-semibold text-lg">Snap your food</p>
-                <p className="text-slate-400 text-sm mt-1">Take a photo or drag &amp; drop an image</p>
+                <p className="text-slate-400 text-sm mt-1">Take a photo or drag &amp; drop</p>
               </div>
               <div className="flex gap-3">
-                <div className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 transition-colors text-white text-sm font-medium px-4 py-2 rounded-xl">
+                <div className="flex items-center gap-2 bg-emerald-500 text-white text-sm font-medium px-4 py-2 rounded-xl">
                   <Camera size={15} /> Camera
                 </div>
-                <div className="flex items-center gap-2 bg-white/10 hover:bg-white/15 transition-colors text-white text-sm font-medium px-4 py-2 rounded-xl">
+                <div className="flex items-center gap-2 bg-white/10 text-white text-sm font-medium px-4 py-2 rounded-xl">
                   <Upload size={15} /> Upload
                 </div>
               </div>
@@ -416,10 +435,16 @@ export default function Home() {
           )}
         </div>
 
+        {/* Recipe builder button */}
+        <button
+          onClick={() => setShowRecipe(true)}
+          className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-sm font-medium py-3 rounded-xl transition-colors"
+        >
+          <ChefHat size={16} className="text-emerald-400" /> Build a Recipe / Drink
+        </button>
+
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-300 text-sm">
-            {error}
-          </div>
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-300 text-sm">{error}</div>
         )}
 
         {/* Today */}
@@ -430,21 +455,14 @@ export default function Home() {
               <div className="space-y-3">
                 <h2 className="text-white font-semibold">Today&apos;s Log</h2>
                 {todayEntries.map((entry, i) => (
-                  <NutritionCard
-                    key={entry.id}
-                    nutrition={entry.nutrition}
-                    imageUrl={entry.imageUrl}
-                    time={new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    defaultOpen={i === 0}
-                    onDelete={() => deleteEntry(entry.id)}
-                  />
+                  <NutritionCard key={entry.id} entry={entry} defaultOpen={i === 0} onDelete={() => deleteEntry(entry.id)} />
                 ))}
               </div>
             )}
             {todayEntries.length === 0 && !analyzing && (
               <div className="text-center py-6 space-y-2">
                 <p className="text-slate-500 text-sm">No food logged yet today</p>
-                <p className="text-slate-600 text-xs">Take a photo to get started</p>
+                <p className="text-slate-600 text-xs">Take a photo or build a recipe to get started</p>
               </div>
             )}
           </>
@@ -458,12 +476,7 @@ export default function Home() {
               <p className="text-slate-500 text-sm text-center py-6">No history yet</p>
             ) : (
               pastDates.map(dateKey => (
-                <HistoryDay
-                  key={dateKey}
-                  dateKey={dateKey}
-                  entries={pastByDate[dateKey]}
-                  onDelete={deleteEntry}
-                />
+                <HistoryDay key={dateKey} dateKey={dateKey} entries={pastByDate[dateKey]} onDelete={deleteEntry} />
               ))
             )}
           </div>
