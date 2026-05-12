@@ -6,22 +6,41 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'Cal AI',
     description: 'Snap a photo of your food and get instant AI-powered nutritional analysis',
     start_url: '/',
+    scope: '/',
     display: 'standalone',
+    display_override: ['standalone', 'minimal-ui'],
     background_color: '#020617',
     theme_color: '#10b981',
     orientation: 'portrait',
+    lang: 'en',
+    dir: 'ltr',
     icons: [
       {
-        src: '/icon-192.png',
+        src: '/icon',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'any',
+      },
+      {
+        src: '/icon',
         sizes: '192x192',
         type: 'image/png',
         purpose: 'maskable',
       },
       {
-        src: '/icon-512.png',
+        src: '/apple-icon',
+        sizes: '180x180',
+        type: 'image/png',
+      },
+    ],
+    screenshots: [
+      {
+        src: '/icon',
         sizes: '512x512',
         type: 'image/png',
-        purpose: 'any',
+        // @ts-expect-error form_factor is valid but not yet in Next.js types
+        form_factor: 'narrow',
+        label: 'Cal AI home screen',
       },
     ],
   }
