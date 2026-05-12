@@ -440,7 +440,7 @@ export default function Home() {
           onClick={() => setShowRecipe(true)}
           className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-sm font-medium py-3 rounded-xl transition-colors"
         >
-          <ChefHat size={16} className="text-emerald-400" /> Build a Recipe / Drink
+          <ChefHat size={16} className="text-emerald-400" /> AI couldn&apos;t identify it? Build manually
         </button>
 
         {error && (
