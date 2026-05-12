@@ -174,8 +174,8 @@ function DailyTotals({ entries, label }: { entries: LogEntry[]; label: string })
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   )
-  const goalCal = 2000
-  const calPct = Math.min(100, Math.round((totals.calories / goalCal) * 100))
+  const GOALS = { calories: 2650, protein: 150, carbs: 300, fat: 80 }
+  const calPct = Math.min(100, Math.round((totals.calories / GOALS.calories) * 100))
 
   return (
     <div className="bg-gradient-to-br from-emerald-900/40 to-teal-900/40 border border-emerald-500/20 rounded-2xl p-5">
@@ -185,7 +185,7 @@ function DailyTotals({ entries, label }: { entries: LogEntry[]; label: string })
       </div>
       <div className="flex items-end gap-2 mb-3">
         <span className="text-5xl font-bold text-white">{totals.calories}</span>
-        <span className="text-slate-400 mb-2">/ {goalCal} kcal</span>
+        <span className="text-slate-400 mb-2">/ {GOALS.calories} kcal</span>
       </div>
       <div className="h-3 bg-white/10 rounded-full overflow-hidden mb-4">
         <div
@@ -195,12 +195,12 @@ function DailyTotals({ entries, label }: { entries: LogEntry[]; label: string })
       </div>
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Protein', value: totals.protein, color: 'text-blue-400' },
-          { label: 'Carbs', value: totals.carbs, color: 'text-orange-400' },
-          { label: 'Fat', value: totals.fat, color: 'text-pink-400' },
+          { label: 'Protein', value: totals.protein, goal: GOALS.protein, color: 'text-blue-400' },
+          { label: 'Carbs', value: totals.carbs, goal: GOALS.carbs, color: 'text-orange-400' },
+          { label: 'Fat', value: totals.fat, goal: GOALS.fat, color: 'text-pink-400' },
         ].map(m => (
           <div key={m.label} className="text-center">
-            <p className={`font-bold ${m.color}`}>{m.value}g</p>
+            <p className={`font-bold ${m.color}`}>{m.value}<span className="text-slate-500 font-normal text-xs">/{m.goal}g</span></p>
             <p className="text-slate-400 text-xs">{m.label}</p>
           </div>
         ))}
