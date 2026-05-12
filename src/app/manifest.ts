@@ -38,7 +38,6 @@ export default function manifest(): MetadataRoute.Manifest {
         src: '/icon',
         sizes: '512x512',
         type: 'image/png',
-        // @ts-expect-error form_factor is valid but not yet in Next.js types
         form_factor: 'narrow',
         label: 'Cal AI home screen',
       },
