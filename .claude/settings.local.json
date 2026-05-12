@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "Read(//c/Users/navee/.claude/projects/C--Users-navee-rental-finder/**)",
+      "Read(//c/Users/navee/.claude/projects/C--Users-navee-rental-finder/memory/**)",
+      "Bash(npm create:*)"
+    ]
+  }
+}
