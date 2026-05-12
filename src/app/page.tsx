@@ -145,7 +145,7 @@ function NutritionCard({ entry, defaultOpen = true, onDelete }: {
             <span className="text-slate-400 text-xs">&mdash; {entry.notes}</span>
           </div>
           {onDelete && (
-            <button onClick={onDelete} className="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm transition-colors">
+            <button aria-label="Remove from log" onClick={onDelete} className="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm transition-colors">
               <Trash2 size={14} /> Remove from log
             </button>
           )}
@@ -390,7 +390,7 @@ export default function Home() {
       {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
       {showGoals && <GoalsSetup userId={user.id} existing={goals} isEdit onClose={() => setShowGoals(false)} onSaved={g => { setGoals(g); setShowGoals(false) }} />}
 
-      <div className="relative z-10 max-w-lg mx-auto px-4 py-8 space-y-6 pb-safe">
+      <main className="relative z-10 max-w-lg mx-auto px-4 py-8 space-y-6 pb-safe">
         {/* Header */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
@@ -402,6 +402,7 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              aria-label="Edit goals"
               onClick={() => setShowGoals(true)}
               className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-white transition-colors"
             >
@@ -409,6 +410,7 @@ export default function Home() {
             </button>
             {user.email === 'aditya.kasal@gmail.com' && (
               <button
+                aria-label="Admin panel"
                 onClick={() => setShowAdmin(true)}
                 className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-emerald-400 transition-colors"
               >
@@ -417,6 +419,7 @@ export default function Home() {
             )}
             {pastDates.length > 0 && (
               <button
+                aria-label="View history"
                 onClick={() => setShowHistory(o => !o)}
                 className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl transition-colors
                   ${showHistory ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-slate-400 hover:text-white'}`}
@@ -425,6 +428,7 @@ export default function Home() {
               </button>
             )}
             <button
+              aria-label="Sign out"
               onClick={() => supabase.auth.signOut()}
               className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-white transition-colors"
             >
@@ -523,7 +527,7 @@ export default function Home() {
             )}
           </div>
         )}
-      </div>
+      </main>
     </div>
   )
 }
