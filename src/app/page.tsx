@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Camera, Upload, Trash2, ChevronDown, ChevronUp, Zap, Leaf, History, LogOut, ChefHat } from 'lucide-react'
+import { Camera, Upload, Trash2, ChevronDown, ChevronUp, Zap, Leaf, History, LogOut, ChefHat, ShieldCheck } from 'lucide-react'
 import { supabase, type DBLogEntry } from '@/lib/supabase'
 import { AuthScreen } from '@/components/AuthScreen'
 import { RecipeBuilder } from '@/components/RecipeBuilder'
+import { AdminPanel } from '@/components/AdminPanel'
 import type { User } from '@supabase/supabase-js'
 
 interface NutritionData {
@@ -220,6 +221,7 @@ export default function Home() {
   const [dragging, setDragging] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showRecipe, setShowRecipe] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -367,6 +369,7 @@ export default function Home() {
       }} />
 
       {showRecipe && <RecipeBuilder onClose={() => setShowRecipe(false)} onAnalyzed={onRecipeAnalyzed} />}
+      {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
 
       <div className="relative z-10 max-w-lg mx-auto px-4 py-8 space-y-6 pb-safe">
         {/* Header */}
@@ -379,6 +382,14 @@ export default function Home() {
             <p className="text-slate-400 text-xs truncate">Hey {userName} 👋</p>
           </div>
           <div className="flex items-center gap-2">
+            {user.email === 'aditya.kasal@gmail.com' && (
+              <button
+                onClick={() => setShowAdmin(true)}
+                className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-emerald-400 transition-colors"
+              >
+                <ShieldCheck size={14} />
+              </button>
+            )}
             {pastDates.length > 0 && (
               <button
                 onClick={() => setShowHistory(o => !o)}
