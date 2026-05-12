@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Camera, Upload, Trash2, ChevronDown, ChevronUp, Zap, Leaf, History, LogOut, ChefHat, ShieldCheck } from 'lucide-react'
+import { Camera, Upload, Trash2, ChevronDown, ChevronUp, Zap, Leaf, History, LogOut, ChefHat, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { supabase, type DBLogEntry } from '@/lib/supabase'
 import { AuthScreen } from '@/components/AuthScreen'
 import { RecipeBuilder } from '@/components/RecipeBuilder'
 import { AdminPanel } from '@/components/AdminPanel'
+import { GoalsSetup, type Goals } from '@/components/GoalsSetup'
 import type { User } from '@supabase/supabase-js'
 
 interface NutritionData {
@@ -21,7 +22,7 @@ interface NutritionData {
   notes: string
 }
 
-const GOALS = { calories: 2650, protein: 150, carbs: 300, fat: 80 }
+const DEFAULT_GOALS: Goals = { calories_goal: 2000, protein_goal: 150, carbs_goal: 250, fat_goal: 70 }
 const RECIPE_PLACEHOLDER = 'recipe'
 
 const CONFIDENCE_COLORS = { high: 'text-emerald-400', medium: 'text-yellow-400', low: 'text-red-400' }
@@ -151,12 +152,12 @@ function NutritionCard({ entry, defaultOpen = true, onDelete }: {
   )
 }
 
-function DailyTotals({ entries, label }: { entries: DBLogEntry[]; label: string }) {
+function DailyTotals({ entries, label, goals }: { entries: DBLogEntry[]; label: string; goals: Goals }) {
   const totals = entries.reduce(
     (acc, e) => ({ calories: acc.calories + e.calories, protein: acc.protein + e.protein, carbs: acc.carbs + e.carbs, fat: acc.fat + e.fat }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   )
-  const calPct = Math.min(100, Math.round((totals.calories / GOALS.calories) * 100))
+  const calPct = Math.min(100, Math.round((totals.calories / goals.calories_goal) * 100))
 
   return (
     <div className="bg-gradient-to-br from-emerald-900/40 to-teal-900/40 border border-emerald-500/20 rounded-2xl p-5">
@@ -166,16 +167,16 @@ function DailyTotals({ entries, label }: { entries: DBLogEntry[]; label: string 
       </div>
       <div className="flex items-end gap-2 mb-3">
         <span className="text-5xl font-bold text-white">{totals.calories}</span>
-        <span className="text-slate-400 mb-2">/ {GOALS.calories} kcal</span>
+        <span className="text-slate-400 mb-2">/ {goals.calories_goal} kcal</span>
       </div>
       <div className="h-3 bg-white/10 rounded-full overflow-hidden mb-4">
         <div className={`h-full rounded-full transition-all duration-700 ${calPct >= 100 ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${calPct}%` }} />
       </div>
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Protein', value: totals.protein, goal: GOALS.protein, color: 'text-blue-400' },
-          { label: 'Carbs', value: totals.carbs, goal: GOALS.carbs, color: 'text-orange-400' },
-          { label: 'Fat', value: totals.fat, goal: GOALS.fat, color: 'text-pink-400' },
+          { label: 'Protein', value: totals.protein, goal: goals.protein_goal, color: 'text-blue-400' },
+          { label: 'Carbs', value: totals.carbs, goal: goals.carbs_goal, color: 'text-orange-400' },
+          { label: 'Fat', value: totals.fat, goal: goals.fat_goal, color: 'text-pink-400' },
         ].map(m => (
           <div key={m.label} className="text-center">
             <p className={`font-bold ${m.color}`}>{m.value}<span className="text-slate-500 font-normal text-xs">/{m.goal}g</span></p>
@@ -214,6 +215,7 @@ function HistoryDay({ dateKey, entries, onDelete }: { dateKey: string; entries: 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [goals, setGoals] = useState<Goals | null>(null)
   const [log, setLog] = useState<DBLogEntry[]>([])
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -222,6 +224,7 @@ export default function Home() {
   const [showHistory, setShowHistory] = useState(false)
   const [showRecipe, setShowRecipe] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
+  const [showGoals, setShowGoals] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -244,10 +247,19 @@ export default function Home() {
     setLog(data || [])
   }, [])
 
+  const loadGoals = useCallback(async (userId: string) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+    setGoals(data ?? null)
+  }, [])
+
   useEffect(() => {
-    if (user) loadLog(user.id)
-    else setLog([])
-  }, [user, loadLog])
+    if (user) { loadLog(user.id); loadGoals(user.id) }
+    else { setLog([]); setGoals(null) }
+  }, [user, loadLog, loadGoals])
 
   const saveEntry = async (nutrition: NutritionData, imageUrl: string, isRecipe = false, ingredients?: string) => {
     if (!user) return
@@ -350,6 +362,9 @@ export default function Home() {
   }
 
   if (!user) return <AuthScreen />
+  if (goals === null) return (
+    <GoalsSetup userId={user.id} onSaved={g => setGoals(g)} />
+  )
 
   const today = todayKey()
   const todayEntries = log.filter(e => e.date_key === today)
@@ -370,6 +385,7 @@ export default function Home() {
 
       {showRecipe && <RecipeBuilder onClose={() => setShowRecipe(false)} onAnalyzed={onRecipeAnalyzed} />}
       {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+      {showGoals && <GoalsSetup userId={user.id} existing={goals} isEdit onClose={() => setShowGoals(false)} onSaved={g => { setGoals(g); setShowGoals(false) }} />}
 
       <div className="relative z-10 max-w-lg mx-auto px-4 py-8 space-y-6 pb-safe">
         {/* Header */}
@@ -382,6 +398,12 @@ export default function Home() {
             <p className="text-slate-400 text-xs truncate">Hey {userName} 👋</p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowGoals(true)}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-white transition-colors"
+            >
+              <SlidersHorizontal size={14} />
+            </button>
             {user.email === 'aditya.kasal@gmail.com' && (
               <button
                 onClick={() => setShowAdmin(true)}
@@ -467,7 +489,7 @@ export default function Home() {
         {/* Today */}
         {!showHistory && (
           <>
-            {todayEntries.length > 0 && <DailyTotals entries={todayEntries} label="Today's Totals" />}
+            {todayEntries.length > 0 && <DailyTotals entries={todayEntries} label="Today's Totals" goals={goals} />}
             {todayEntries.length > 0 && (
               <div className="space-y-3">
                 <h2 className="text-white font-semibold">Today&apos;s Log</h2>
