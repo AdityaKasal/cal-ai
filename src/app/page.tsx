@@ -41,7 +41,7 @@ function formatDateLabel(dateKey: string) {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
 }
 
-async function compressThumbnail(dataUrl: string, maxPx = 300): Promise<string> {
+async function compressImage(dataUrl: string, maxPx: number, quality: number): Promise<string> {
   return new Promise(resolve => {
     const img = new Image()
     img.onload = () => {
@@ -50,11 +50,14 @@ async function compressThumbnail(dataUrl: string, maxPx = 300): Promise<string> 
       canvas.width = Math.round(img.width * scale)
       canvas.height = Math.round(img.height * scale)
       canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
-      resolve(canvas.toDataURL('image/jpeg', 0.7))
+      resolve(canvas.toDataURL('image/jpeg', quality))
     }
     img.src = dataUrl
   })
 }
+
+const compressThumbnail = (dataUrl: string) => compressImage(dataUrl, 300, 0.7)
+const compressForAPI = (dataUrl: string) => compressImage(dataUrl, 1024, 0.8)
 
 function MacroBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
   const pct = Math.min(100, Math.round((value / max) * 100))
@@ -308,15 +311,15 @@ export default function Home() {
     reader.onload = async () => {
       const dataUrl = reader.result as string
       setPreview(dataUrl)
-      const base64 = dataUrl.split(',')[1]
-      const mediaType = file.type as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
+      const compressed = await compressForAPI(dataUrl)
+      const base64 = compressed.split(',')[1]
       const token = await getToken()
 
       try {
         const res = await fetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ image: base64, mediaType }),
+          body: JSON.stringify({ image: base64, mediaType: 'image/jpeg' }),
         })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
