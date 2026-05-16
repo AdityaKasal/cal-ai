@@ -228,7 +228,8 @@ export default function Home() {
   const [showRecipe, setShowRecipe] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -444,10 +445,10 @@ export default function Home() {
           onDrop={onDrop}
           className={`relative rounded-2xl border-2 border-dashed transition-all duration-200 overflow-hidden
             ${dragging ? 'border-emerald-400 bg-emerald-500/10' : 'border-white/10 bg-white/5'}
-            ${analyzing ? 'pointer-events-none' : 'cursor-pointer hover:border-emerald-500/40'}`}
-          onClick={() => !analyzing && fileRef.current?.click()}
+            ${analyzing ? 'pointer-events-none' : 'hover:border-emerald-500/40'}`}
         >
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFileChange} />
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFileChange} />
+          <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
 
           {analyzing && preview ? (
             <div className="relative">
@@ -470,12 +471,20 @@ export default function Home() {
                 <p className="text-slate-400 text-sm mt-1">Take a photo or drag &amp; drop</p>
               </div>
               <div className="flex gap-3">
-                <div className="flex items-center gap-2 bg-emerald-500 text-white text-sm font-medium px-4 py-2 rounded-xl">
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); cameraRef.current?.click() }}
+                  className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+                >
                   <Camera size={15} /> Camera
-                </div>
-                <div className="flex items-center gap-2 bg-white/10 text-white text-sm font-medium px-4 py-2 rounded-xl">
-                  <Upload size={15} /> Upload
-                </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); galleryRef.current?.click() }}
+                  className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+                >
+                  <Upload size={15} /> Gallery
+                </button>
               </div>
             </div>
           )}
